@@ -1,48 +1,144 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>GPS Tracker</title>
+  <meta charset="UTF-8">
+  <title>GPS Tracker with Accelerometer Fallback</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    .data { font-size: 1.2em; margin-top: 10px; }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+    }
+    .data {
+      font-size: 1.1em;
+      margin-top: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 1em;
+      margin-top: 10px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
 
-  <h1>GPS Tracker</h1>
+  <h1>GPS Tracker with Accelerometer Fallback</h1>
+  <p>Click the button to start tracking your location and estimating speed.</p>
+  <button id="startBtn">Start Tracking</button>
+
   <div class="data" id="location">Waiting for location...</div>
+  <div class="data" id="accelData"></div>
 
   <script>
-    function startTracking() {
-      if ("geolocation" in navigator) {
-        navigator.geolocation.watchPosition(
-          position => {
-            const lat = position.coords.latitude;
-            const lon = position.coords.longitude;
-            const speed = position.coords.speed; // in meters/second (m/s)
+    let watchId = null;
+    let accelVelocity = 0;
+    let lastAccelTime = null;
 
-            document.getElementById('location').innerHTML = `
-              <strong>Latitude:</strong> ${lat.toFixed(6)}<br>
-              <strong>Longitude:</strong> ${lon.toFixed(6)}<br>
-              <strong>Speed:</strong> ${speed !== null ? (speed * 3.6).toFixed(2) + ' km/h' : 'N/A'}
-            `;
-          },
-          error => {
-            document.getElementById('location').textContent = `Error: ${error.message}`;
-          },
-          {
-            enableHighAccuracy: true,
-            maximumAge: 1000,
-            timeout: 10000
-          }
-        );
+    const locationEl = document.getElementById('location');
+    const accelEl = document.getElementById('accelData');
+    const startBtn = document.getElementById('startBtn');
+
+    // GPS tracking
+    function startGPS() {
+      if (!("geolocation" in navigator)) {
+        locationEl.textContent = "Geolocation is not supported.";
+        return;
+      }
+
+      watchId = navigator.geolocation.watchPosition(
+        position => {
+          const { latitude, longitude, speed } = position.coords;
+          const timestamp = new Date(position.timestamp).toLocaleTimeString();
+
+          const gpsSpeed = speed !== null ? (speed * 3.6).toFixed(2) + ' km/h' : null;
+
+          locationEl.innerHTML = `
+            <strong>Latitude:</strong> ${latitude.toFixed(6)}<br>
+            <strong>Longitude:</strong> ${longitude.toFixed(6)}<br>
+            <strong>Speed (GPS):</strong> ${gpsSpeed ?? "N/A (using accelerometer)"}<br>
+            <strong>Last updated:</strong> ${timestamp}
+          `;
+        },
+        error => {
+          locationEl.textContent = `Geolocation error: ${error.message}`;
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 1000
+        }
+      );
+    }
+
+    // Accelerometer speed estimation
+    function startAccelerometer() {
+      function handleMotion(event) {
+        const acc = event.accelerationIncludingGravity;
+        const now = Date.now();
+
+        if (acc && lastAccelTime) {
+          const dt = (now - lastAccelTime) / 1000; // in seconds
+
+          const ax = acc.x || 0;
+          const ay = acc.y || 0;
+          const az = acc.z || 0;
+
+          const acceleration = Math.sqrt(ax * ax + ay * ay + az * az) - 9.81; // subtract gravity
+
+          // Integrate to get velocity
+          accelVelocity += acceleration * dt;
+
+          // Clamp to 0 (prevent negative drift)
+          accelVelocity = Math.max(0, accelVelocity);
+
+          accelEl.innerHTML = `
+            <strong>Estimated Speed (Accelerometer):</strong> ${(accelVelocity * 3.6).toFixed(2)} km/h<br>
+            <small>Raw Acceleration:</small> x=${ax.toFixed(2)}, y=${ay.toFixed(2)}, z=${az.toFixed(2)}
+          `;
+        }
+
+        lastAccelTime = now;
+      }
+
+      if (typeof DeviceMotionEvent !== 'undefined') {
+        // iOS requires permission
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+          DeviceMotionEvent.requestPermission().then(response => {
+            if (response === 'granted') {
+              window.addEventListener('devicemotion', handleMotion);
+            } else {
+              accelEl.textContent = 'Accelerometer permission denied.';
+            }
+          }).catch(err => {
+            accelEl.textContent = 'Accelerometer permission error: ' + err;
+          });
+        } else {
+          // Non-iOS
+          window.addEventListener('devicemotion', handleMotion);
+        }
       } else {
-        document.getElementById('location').textContent = "Geolocation is not supported by your browser.";
+        accelEl.textContent = 'Accelerometer not supported.';
       }
     }
 
-    // Start tracking when user clicks anywhere
-    window.addEventListener('click', startTracking, { once: true });
+    // Combine both tracking methods
+    startBtn.addEventListener('click', () => {
+      startBtn.disabled = true;
+      startBtn.textContent = 'Tracking...';
+      startGPS();
+      startAccelerometer();
+    });
+
+    // Optional: auto-start if permission was previously granted
+    if ('permissions' in navigator) {
+      navigator.permissions.query({ name: 'geolocation' }).then(result => {
+        if (result.state === 'granted') {
+          startBtn.click(); // auto-start
+        }
+      });
+    }
   </script>
 
 </body>
