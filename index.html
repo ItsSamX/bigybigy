@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GPS Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .data { font-size: 1.2em; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <h1>GPS Tracker</h1>
+  <div class="data" id="location">Waiting for location...</div>
+
+  <script>
+    function startTracking() {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.watchPosition(
+          position => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const speed = position.coords.speed; // in meters/second (m/s)
+
+            document.getElementById('location').innerHTML = `
+              <strong>Latitude:</strong> ${lat.toFixed(6)}<br>
+              <strong>Longitude:</strong> ${lon.toFixed(6)}<br>
+              <strong>Speed:</strong> ${speed !== null ? (speed * 3.6).toFixed(2) + ' km/h' : 'N/A'}
+            `;
+          },
+          error => {
+            document.getElementById('location').textContent = `Error: ${error.message}`;
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 1000,
+            timeout: 10000
+          }
+        );
+      } else {
+        document.getElementById('location').textContent = "Geolocation is not supported by your browser.";
+      }
+    }
+
+    // Start tracking when user clicks anywhere
+    window.addEventListener('click', startTracking, { once: true });
+  </script>
+
+</body>
+</html>
